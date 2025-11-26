@@ -1,4 +1,4 @@
-// Simple product data for the MVP
+﻿// Simple product data for the MVP
 const products = [
     {
         id: 1,
@@ -6,7 +6,8 @@ const products = [
         brand: "Luminous Scents",
         price: 89.99,
         notes: "Oud, amber, vanilla",
-        description: "Warm and deep evening scent with a rich oud base."
+        description: "Warm and deep evening scent with a rich oud base.",
+        image: "aurora-oud.png"
     },
     {
         id: 2,
@@ -14,7 +15,8 @@ const products = [
         brand: "Luminous Scents",
         price: 59.99,
         notes: "Bergamot, lemon, neroli",
-        description: "Fresh daytime fragrance that is bright and uplifting."
+        description: "Fresh daytime fragrance that is bright and uplifting.",
+        image: "citrus-dawn.png"
     },
     {
         id: 3,
@@ -22,7 +24,26 @@ const products = [
         brand: "Luminous Scents",
         price: 74.50,
         notes: "Iris, violet, sandalwood",
-        description: "Soft floral scent with a creamy sandalwood base."
+        description: "Soft floral scent with a creamy sandalwood base.",
+        image: "velvet-iris.png"
+    },
+    {
+        id: 5,
+        name: "Solaris Homme",
+        brand: "Luminous Scents",
+        price: 69.99,
+        notes: "Cedar, vetiver, citrus",
+        description: "Sophisticated woody scent for him.",
+        image: "solaris-homme.png"
+    },
+    {
+        id: 4,
+        name: "Solaris Femme",
+        brand: "Luminous Scents",
+        price: 79.99,
+        notes: "Jasmine, rose, musk",
+        description: "Elegant floral scent for her.",
+        image: "solaris-femme.png"
     }
 ];
 function customAlert(message) {
@@ -137,19 +158,28 @@ function updateQuantity(productId, change) {
 
 function renderProductsPage() {
     const container = document.getElementById("productsContainer");
+    const solarisContainer = document.getElementById("solarisContainer");
     if (!container) {
         return;
     }
 
     container.innerHTML = "";
+    if (solarisContainer) {
+        solarisContainer.innerHTML = "";
+    }
 
-    products.forEach(product => {
+    // Separate regular products and Solaris fragrances
+    const regularProducts = products.filter(p => p.name.toLowerCase().includes('aurora') || p.name.toLowerCase().includes('citrus') || p.name.toLowerCase().includes('velvet'));
+    const solarisProducts = products.filter(p => p.name.toLowerCase().includes('solaris'));
+
+    // Render regular products
+    regularProducts.forEach(product => {
         const card = document.createElement("article");
         card.className = "card";
 
         card.innerHTML = `
             <div class="product-image-container ${product.id === 1 ? 'aurora-oud-image' : ''}">
-                <img src="images/${product.id === 1 ? 'aurora-oud.png' : product.id === 2 ? 'citrus-dawn.png' : 'velvet-iris.png'}" alt="${product.name}" class="product-image">
+                <img src="images/${product.image}" alt="${product.name}" class="product-image">
             </div>
             <h3>${product.name}</h3>
             <p>${product.brand}</p>
@@ -167,6 +197,33 @@ function renderProductsPage() {
         card.querySelectorAll('h3, p, .btn-primary').forEach(el => applyScrollReveal(el));
     });
 
+    // Render Solaris fragrances
+    if (solarisContainer && solarisProducts.length > 0) {
+        solarisProducts.forEach(product => {
+            const card = document.createElement("article");
+            card.className = "card";
+
+            card.innerHTML = `
+                <div class="product-image-container">
+                    <img src="images/${product.image}" alt="${product.name}" class="product-image">
+                </div>
+                <h3>${product.name}</h3>
+                <p>${product.brand}</p>
+                <p><strong>Notes:</strong> ${product.notes}</p>
+                <p class="price">£${product.price.toFixed(2)}</p>
+                <p>${product.description}</p>
+                <button class="btn-primary" data-product-id="${product.id}">
+                    Add to basket
+                </button>
+                    `;
+
+            solarisContainer.appendChild(card);
+
+            applyScrollReveal(card);
+            card.querySelectorAll('h3, p, .btn-primary').forEach(el => applyScrollReveal(el));
+        });
+    }
+
     container.addEventListener("click", event => {
         const button = event.target.closest("button[data-product-id]");
         if (button) {
@@ -174,6 +231,119 @@ function renderProductsPage() {
             addToBasket(id);
         }
     });
+
+    if (solarisContainer) {
+        solarisContainer.addEventListener("click", event => {
+            const button = event.target.closest("button[data-product-id]");
+            if (button) {
+                const id = Number(button.getAttribute("data-product-id"));
+                addToBasket(id);
+            }
+        });
+    }
+}
+
+function filterProducts() {
+    const searchTerm = document.getElementById("searchInput").value.toLowerCase();
+    const cards = document.querySelectorAll("#productsContainer .card");
+    const solarisCards = document.querySelectorAll("#solarisContainer .card");
+    const solarisSection = document.querySelector(".solaris-duo-section");
+    
+    let solarisVisible = 0;
+
+    // Filter main products
+    cards.forEach(card => {
+        const name = card.querySelector("h3").textContent.toLowerCase();
+        const notes = card.querySelector("p:nth-of-type(2)").textContent.toLowerCase();
+        const description = card.querySelector("p:nth-of-type(4)").textContent.toLowerCase();
+        const matches = name.includes(searchTerm) || notes.includes(searchTerm) || description.includes(searchTerm);
+
+        if (matches) {
+            card.style.opacity = "1";
+            card.style.display = "block";
+        } else {
+            card.style.opacity = "0";
+            card.style.display = "none";
+        }
+    });
+
+    // Filter Solaris products and count visible ones
+    solarisCards.forEach(card => {
+        const name = card.querySelector("h3").textContent.toLowerCase();
+        const notes = card.querySelector("p:nth-of-type(2)").textContent.toLowerCase();
+        const description = card.querySelector("p:nth-of-type(4)").textContent.toLowerCase();
+        const matches = name.includes(searchTerm) || notes.includes(searchTerm) || description.includes(searchTerm);
+
+        if (matches) {
+            card.style.opacity = "1";
+            card.style.display = "block";
+            solarisVisible++;
+        } else {
+            card.style.opacity = "0";
+            card.style.display = "none";
+        }
+    });
+
+    // Hide/show Solaris section based on visible products
+    if (solarisSection) {
+        if (searchTerm === "" || solarisVisible > 0) {
+            solarisSection.style.display = "block";
+        } else {
+            solarisSection.style.display = "none";
+        }
+    }
+}
+
+function initEnhancedSearch() {
+    const searchInput = document.getElementById("searchInput");
+    const searchBox = document.querySelector(".search-box");
+    const clearBtn = document.querySelector(".search-clear");
+    const suggestionTags = document.querySelectorAll(".suggestion-tag");
+
+    if (!searchInput || !searchBox) return;
+
+    // Update has-value class on input
+    function updateHasValue() {
+        if (searchInput.value.length > 0) {
+            searchBox.classList.add("has-value");
+        } else {
+            searchBox.classList.remove("has-value");
+        }
+    }
+
+    // Filter products on input
+    searchInput.addEventListener("input", () => {
+        updateHasValue();
+        filterProducts();
+    });
+
+    // Clear button functionality
+    if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+            searchInput.value = "";
+            updateHasValue();
+            filterProducts();
+            searchInput.focus();
+        });
+    }
+
+    // Suggestion tag click - fills search and filters
+    suggestionTags.forEach(tag => {
+        tag.addEventListener("click", () => {
+            searchInput.value = tag.textContent;
+            updateHasValue();
+            filterProducts();
+            
+            // Add a nice pulse effect to the search box
+            searchBox.style.transform = "scale(1.03)";
+            setTimeout(() => {
+                searchBox.style.transform = "";
+            }, 150);
+        });
+    });
+
+    // Initial state
+    updateHasValue();
 }
 
 function renderBasketPage() {
@@ -236,15 +406,17 @@ function renderBasketPage() {
     });
 
     summary.innerHTML = `
-        <p><strong>Total:</strong> £${total.toFixed(2)}</p>
-        <button id="clearBasketBtn" class="btn-secondary" style="margin-right: 1rem;">Clear basket</button>
-        <button id="mockCheckoutBtn" class="btn-primary">Proceed to checkout</button>
+        <p class="basket-total"><strong>Total:</strong> £${total.toFixed(2)}</p>
+        <div class="basket-actions">
+            <button id="clearBasketBtn" class="btn-secondary">Clear basket</button>
+            <button id="mockCheckoutBtn" class="btn-primary">Proceed to checkout</button>
+        </div>
     `;
 
     const checkoutBtn = document.getElementById("mockCheckoutBtn");
     if (checkoutBtn) {
         checkoutBtn.addEventListener("click", () => {
-            customAlert("Checkout flow will be implemented in the full version. For MVP this is a demo only.");
+            window.location.href = "checkout.html";
         });
     }
 
@@ -257,6 +429,7 @@ function renderBasketPage() {
             });
         });
     }
+
 }
 
 // Scroll reveal helper function
@@ -273,54 +446,390 @@ function setupAuthForm() {
     const passwordInput = document.getElementById("authPassword");
     const message = document.getElementById("authMessage");
     const isNewUser = document.getElementById("isNewUser");
+    const emailError = document.getElementById("emailError");
+    const passwordError = document.getElementById("passwordError");
+    const passwordRequirements = document.getElementById("passwordRequirements");
+    const successToast = document.getElementById("successToast");
+    const toastMessage = document.getElementById("toastMessage");
 
-    if (!form || !emailInput || !passwordInput || !message) {
+    // Password requirement elements
+    const reqLength = document.getElementById("reqLength");
+    const reqUpper = document.getElementById("reqUpper");
+    const reqLower = document.getElementById("reqLower");
+    const reqNumber = document.getElementById("reqNumber");
+
+    if (!form || !emailInput || !passwordInput) {
         return;
     }
 
+    // Email validation regex
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // Helper functions
+    function showError(input, errorElement, message) {
+        input.classList.add('input-error');
+        input.classList.remove('input-success');
+        errorElement.textContent = message;
+        errorElement.classList.add('show');
+    }
+
+    function clearError(input, errorElement) {
+        input.classList.remove('input-error');
+        errorElement.textContent = '';
+        errorElement.classList.remove('show');
+    }
+
+    function showSuccess(input) {
+        input.classList.remove('input-error');
+        input.classList.add('input-success');
+    }
+
+    function showToast(msg) {
+        toastMessage.textContent = msg;
+        successToast.classList.add('show');
+        setTimeout(() => {
+            successToast.classList.remove('show');
+        }, 4000);
+    }
+
+    // Validate password requirements
+    function validatePasswordRequirements(password) {
+        const hasLength = password.length >= 8;
+        const hasUpper = /[A-Z]/.test(password);
+        const hasLower = /[a-z]/.test(password);
+        const hasNumber = /[0-9]/.test(password);
+
+        // Update requirement indicators
+        reqLength.textContent = (hasLength ? '✓' : '✗') + ' At least 8 characters';
+        reqLength.classList.toggle('valid', hasLength);
+        
+        reqUpper.textContent = (hasUpper ? '✓' : '✗') + ' One uppercase letter';
+        reqUpper.classList.toggle('valid', hasUpper);
+        
+        reqLower.textContent = (hasLower ? '✓' : '✗') + ' One lowercase letter';
+        reqLower.classList.toggle('valid', hasLower);
+        
+        reqNumber.textContent = (hasNumber ? '✓' : '✗') + ' One number';
+        reqNumber.classList.toggle('valid', hasNumber);
+
+        return hasLength && hasUpper && hasLower && hasNumber;
+    }
+
+    // Real-time email validation
+    emailInput.addEventListener('input', () => {
+        const email = emailInput.value.trim();
+        if (email === '') {
+            clearError(emailInput, emailError);
+        } else if (!emailRegex.test(email)) {
+            showError(emailInput, emailError, 'Please enter a valid email address');
+        } else {
+            clearError(emailInput, emailError);
+            showSuccess(emailInput);
+        }
+    });
+
+    emailInput.addEventListener('blur', () => {
+        const email = emailInput.value.trim();
+        if (email === '') {
+            showError(emailInput, emailError, 'Email address is required');
+        }
+    });
+
+    // Show password requirements when focused (only for new users)
+    passwordInput.addEventListener('focus', () => {
+        if (isNewUser.checked) {
+            passwordRequirements.classList.add('show');
+        }
+    });
+
+    // Real-time password validation
+    passwordInput.addEventListener('input', () => {
+        const password = passwordInput.value;
+        
+        if (isNewUser.checked) {
+            passwordRequirements.classList.add('show');
+            const isValid = validatePasswordRequirements(password);
+            
+            if (password === '') {
+                clearError(passwordInput, passwordError);
+            } else if (!isValid) {
+                passwordInput.classList.add('input-error');
+                passwordInput.classList.remove('input-success');
+            } else {
+                clearError(passwordInput, passwordError);
+                showSuccess(passwordInput);
+            }
+        } else {
+            passwordRequirements.classList.remove('show');
+            if (password === '') {
+                clearError(passwordInput, passwordError);
+            } else if (password.length < 6) {
+                showError(passwordInput, passwordError, 'Password must be at least 6 characters');
+            } else {
+                clearError(passwordInput, passwordError);
+                showSuccess(passwordInput);
+            }
+        }
+    });
+
+    // Toggle password requirements visibility based on checkbox
+    isNewUser.addEventListener('change', () => {
+        if (isNewUser.checked) {
+            passwordRequirements.classList.add('show');
+            if (passwordInput.value) {
+                validatePasswordRequirements(passwordInput.value);
+            }
+        } else {
+            passwordRequirements.classList.remove('show');
+        }
+        // Re-validate password on checkbox change
+        const password = passwordInput.value;
+        if (password !== '') {
+            passwordInput.dispatchEvent(new Event('input'));
+        }
+    });
+
+    // Form submission
     form.addEventListener("submit", event => {
         event.preventDefault();
 
         const email = emailInput.value.trim();
-        const password = passwordInput.value.trim();
+        const password = passwordInput.value;
+        let hasErrors = false;
 
-        // Custom validation with styled messages
+        // Validate email
         if (!email) {
-            customAlert("Please enter your email address.");
-            return;
+            showError(emailInput, emailError, 'Email address is required');
+            hasErrors = true;
+        } else if (!emailRegex.test(email)) {
+            showError(emailInput, emailError, 'Please enter a valid email address');
+            hasErrors = true;
         }
 
-        if (!email.includes('@')) {
-            customAlert("Please enter a valid email address with an '@' symbol.");
-            return;
-        }
-
+        // Validate password
         if (!password) {
-            customAlert("Please enter a password.");
+            showError(passwordInput, passwordError, 'Password is required');
+            hasErrors = true;
+        } else if (isNewUser.checked) {
+            const isValidPassword = validatePasswordRequirements(password);
+            if (!isValidPassword) {
+                showError(passwordInput, passwordError, 'Password does not meet all requirements');
+                hasErrors = true;
+            }
+        } else if (password.length < 6) {
+            showError(passwordInput, passwordError, 'Password must be at least 6 characters');
+            hasErrors = true;
+        }
+
+        if (hasErrors) {
             return;
         }
 
-        if (password.length < 6) {
-            customAlert("Password must be at least 6 characters long.");
-            return;
-        }
-
-        // Rest of the existing success logic...
+        // Success - show toast and clear form
         if (isNewUser.checked) {
-            message.textContent = "Account created locally for MVP. In the full system this will be stored securely.";
+            showToast('Account created successfully! Welcome to Luminous Scents.');
         } else {
-            message.textContent = "Login successful in this demo. Real authentication will be added later.";
+            showToast('Welcome back! You have been logged in.');
         }
-        message.style.color = "#ffffff";
-        message.style.textShadow = "0 0 10px rgba(240, 194, 75, 0.6), 0 0 20px rgba(240, 194, 75, 0.3)";
-        message.style.opacity = "0";
-        message.classList.remove('scroll-reveal', 'revealed', 'show');
-        setTimeout(() => {
-            message.style.opacity = "1";
-            message.classList.add('show');
-        }, 10);
+
+        // Clear form
+        form.reset();
+        clearError(emailInput, emailError);
+        clearError(passwordInput, passwordError);
+        emailInput.classList.remove('input-success');
+        passwordInput.classList.remove('input-success');
+        passwordRequirements.classList.remove('show');
 
         localStorage.setItem("luminousScentsUserEmail", email);
+    });
+}
+
+// Contact form validation
+
+function setupContactForm() {
+    const form = document.getElementById("contactForm");
+    const nameInput = document.getElementById("contactName");
+    const emailInput = document.getElementById("contactEmail");
+    const messageInput = document.getElementById("contactMessage");
+    const nameError = document.getElementById("nameError");
+    const emailError = document.getElementById("contactEmailError");
+    const messageError = document.getElementById("messageError");
+    const charCounter = document.getElementById("charCounter");
+
+    if (!form || !nameInput || !emailInput || !messageInput) {
+        return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const nameRegex = /^[a-zA-Z\s'-]+$/;
+    const MAX_MESSAGE_LENGTH = 500;
+    const MIN_MESSAGE_LENGTH = 10;
+    const MIN_NAME_LENGTH = 2;
+
+    // Helper functions
+    function showError(input, errorElement, message) {
+        input.classList.add('input-error');
+        input.classList.remove('input-success');
+        errorElement.textContent = message;
+        errorElement.classList.add('show');
+    }
+
+    function clearError(input, errorElement) {
+        input.classList.remove('input-error');
+        errorElement.textContent = '';
+        errorElement.classList.remove('show');
+    }
+
+    function showSuccess(input) {
+        input.classList.remove('input-error');
+        input.classList.add('input-success');
+    }
+
+    // Update character counter
+    function updateCharCounter() {
+        const length = messageInput.value.length;
+        charCounter.textContent = `${length} / ${MAX_MESSAGE_LENGTH}`;
+        
+        if (length > MAX_MESSAGE_LENGTH * 0.9) {
+            charCounter.classList.add('warning');
+        } else {
+            charCounter.classList.remove('warning');
+        }
+        
+        if (length >= MAX_MESSAGE_LENGTH) {
+            charCounter.classList.add('limit');
+        } else {
+            charCounter.classList.remove('limit');
+        }
+    }
+
+    // Real-time name validation
+    nameInput.addEventListener('input', () => {
+        const name = nameInput.value.trim();
+        if (name === '') {
+            clearError(nameInput, nameError);
+        } else if (name.length < MIN_NAME_LENGTH) {
+            showError(nameInput, nameError, `Name must be at least ${MIN_NAME_LENGTH} characters`);
+        } else if (!nameRegex.test(name)) {
+            showError(nameInput, nameError, 'Name can only contain letters, spaces, hyphens and apostrophes');
+        } else {
+            clearError(nameInput, nameError);
+            showSuccess(nameInput);
+        }
+    });
+
+    nameInput.addEventListener('blur', () => {
+        const name = nameInput.value.trim();
+        if (name === '') {
+            showError(nameInput, nameError, 'Name is required');
+        }
+    });
+
+    // Real-time email validation
+    emailInput.addEventListener('input', () => {
+        const email = emailInput.value.trim();
+        if (email === '') {
+            clearError(emailInput, emailError);
+        } else if (!emailRegex.test(email)) {
+            showError(emailInput, emailError, 'Please enter a valid email address');
+        } else {
+            clearError(emailInput, emailError);
+            showSuccess(emailInput);
+        }
+    });
+
+    emailInput.addEventListener('blur', () => {
+        const email = emailInput.value.trim();
+        if (email === '') {
+            showError(emailInput, emailError, 'Email address is required');
+        }
+    });
+
+    // Real-time message validation with character counter
+    messageInput.addEventListener('input', () => {
+        updateCharCounter();
+        const message = messageInput.value.trim();
+        
+        if (message === '') {
+            clearError(messageInput, messageError);
+        } else if (message.length < MIN_MESSAGE_LENGTH) {
+            showError(messageInput, messageError, `Message must be at least ${MIN_MESSAGE_LENGTH} characters`);
+        } else if (messageInput.value.length > MAX_MESSAGE_LENGTH) {
+            showError(messageInput, messageError, `Message cannot exceed ${MAX_MESSAGE_LENGTH} characters`);
+        } else {
+            clearError(messageInput, messageError);
+            showSuccess(messageInput);
+        }
+    });
+
+    messageInput.addEventListener('blur', () => {
+        const message = messageInput.value.trim();
+        if (message === '') {
+            showError(messageInput, messageError, 'Message is required');
+        }
+    });
+
+    // Initialize character counter
+    updateCharCounter();
+
+    // Form submission
+    form.addEventListener("submit", function(e) {
+        e.preventDefault();
+
+        const name = nameInput.value.trim();
+        const email = emailInput.value.trim();
+        const message = messageInput.value.trim();
+        let hasErrors = false;
+
+        // Validate name
+        if (!name) {
+            showError(nameInput, nameError, 'Name is required');
+            hasErrors = true;
+        } else if (name.length < MIN_NAME_LENGTH) {
+            showError(nameInput, nameError, `Name must be at least ${MIN_NAME_LENGTH} characters`);
+            hasErrors = true;
+        } else if (!nameRegex.test(name)) {
+            showError(nameInput, nameError, 'Name can only contain letters, spaces, hyphens and apostrophes');
+            hasErrors = true;
+        }
+
+        // Validate email
+        if (!email) {
+            showError(emailInput, emailError, 'Email address is required');
+            hasErrors = true;
+        } else if (!emailRegex.test(email)) {
+            showError(emailInput, emailError, 'Please enter a valid email address');
+            hasErrors = true;
+        }
+
+        // Validate message
+        if (!message) {
+            showError(messageInput, messageError, 'Message is required');
+            hasErrors = true;
+        } else if (message.length < MIN_MESSAGE_LENGTH) {
+            showError(messageInput, messageError, `Message must be at least ${MIN_MESSAGE_LENGTH} characters`);
+            hasErrors = true;
+        } else if (messageInput.value.length > MAX_MESSAGE_LENGTH) {
+            showError(messageInput, messageError, `Message cannot exceed ${MAX_MESSAGE_LENGTH} characters`);
+            hasErrors = true;
+        }
+
+        if (hasErrors) {
+            return;
+        }
+
+        // Success - show confirmation and clear form
+        customAlert("Message sent! We will get back to you soon.");
+        
+        // Clear form
+        form.reset();
+        clearError(nameInput, nameError);
+        clearError(emailInput, emailError);
+        clearError(messageInput, messageError);
+        nameInput.classList.remove('input-success');
+        emailInput.classList.remove('input-success');
+        messageInput.classList.remove('input-success');
+        updateCharCounter();
     });
 }
 
@@ -374,7 +883,7 @@ function initStarfield() {
             ctx.fillStyle = gradient;
             ctx.fill();
 
-            s.x += s.speed * 0.2;
+            s.x += s.speed * 0.8;
             if (s.x > w) s.x = 0;
         }
     }
@@ -412,18 +921,30 @@ function initStarfield() {
 // Page initialiser
 
 document.addEventListener("DOMContentLoaded", () => {
+    // Auto-resize textarea (vertical)
+    const textareas = document.querySelectorAll('textarea');
+    textareas.forEach(textarea => {
+        textarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = this.scrollHeight + 'px';
+        });
+    });
+
     const page = document.body.getAttribute("data-page");
 
     initStarfield();
     initMouseTrail();
 
     // rest of the code...
-    if (page === "home") {
+    if (page === "home" || page === "account") {
         setupAuthForm();
     } else if (page === "products") {
         renderProductsPage();
+        initEnhancedSearch();
     } else if (page === "basket") {
         renderBasketPage();
+    } else if (page === "contact") {
+        setupContactForm();
     }
 });
 // Scroll reveal animations
@@ -452,9 +973,18 @@ observer.observe = function(element) {
     }
     originalObserve.call(this, element);
 };
-document.querySelectorAll('.main-header, .site-footer, .hero-text, .hero-text h2, .hero-text p, .page-header, .page-header h2, .page-header p, .card, .card h3, .card p, .card .btn-primary, .feature-card, .feature-card h4, .feature-card p, .basket-section, .basket-item, .basket-summary, .basket-summary p, .basket-summary .btn-primary, .info-column, .info-column h3, .info-column p, .steps-list li, .step-number, .feature-section h3, .auth-section, .auth-form').forEach(el => {
+// Add scroll-reveal class to content elements (excluding header to keep it stable)
+document.querySelectorAll('.site-footer, .hero-text, .page-header, .card, .card h3, .card p, .card .btn-primary, .feature-section h3, .feature-card, .feature-card h4, .basket-section, .basket-item, .basket-summary, .basket-summary p, .basket-summary .btn-primary, .info-column, .steps-list li, .step-number, .auth-section, .auth-form').forEach(el => {
     el.classList.add('scroll-reveal');
-    observer.observe(el);
+});
+
+// Wait for browser to paint the initial state before observing
+requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+        document.querySelectorAll('.scroll-reveal').forEach(el => {
+            observer.observe(el);
+        });
+    });
 });
 
 
@@ -490,29 +1020,54 @@ function initMouseTrail() {
     
     function animate() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
+    
         const now = Date.now();
-        
+    
         for (let i = points.length - 1; i >= 0; i--) {
             if (now - points[i].time > maxAge) {
                 points.splice(i, 1);
             }
         }
-        
-        points.forEach((point) => {
-            const age = now - point.time;
-            const life = 1 - (age / maxAge);
-            const alpha = life * 0.6;
-            const size = life * 3;
-            
-            ctx.beginPath();
-            ctx.arc(point.x, point.y, size, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(240, 194, 75, ${alpha})`;
-            ctx.fill();
-        });
-        
+    
+        if (points.length > 1) {
+            for (let i = 1; i < points.length; i++) {
+                const point = points[i];
+                const prevPoint = points[i - 1];
+                const age = now - point.time;
+                const life = 1 - (age / maxAge);
+                const alpha = life * 0.6;
+                const size = life * 2;
+    
+                ctx.beginPath();
+                ctx.moveTo(prevPoint.x, prevPoint.y);
+                ctx.lineTo(point.x, point.y);
+                ctx.strokeStyle = `rgba(240, 194, 75, ${alpha})`;
+                ctx.lineWidth = size;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+        }
+    
         requestAnimationFrame(animate);
     }
     
     animate();
 }
+
+const bulletObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            const bullets = entry.target.querySelectorAll("li");
+            bullets.forEach((li, i) => {
+                setTimeout(() => {
+                    li.classList.add("bullet-visible");
+                }, i * 150);
+            });
+        }
+    });
+}, { threshold: 0.2 });
+
+document.querySelectorAll(".values-section").forEach(section => {
+    bulletObserver.observe(section);
+});
+

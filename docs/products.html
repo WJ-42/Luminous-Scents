@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Luminous Scents - Fragrances</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,8 +25,10 @@
         </div>
         <nav class="navbar">
             <a href="index.html">Home</a>
-            <a href="products.html">Fragrances</a>
+            <a href="products.html" class="active">Fragrances</a>
             <a href="basket.html">Basket</a>
+            <a href="about.html">About</a>
+            <a href="contact.html">Contact</a>
             <a href="account.html">Account</a>
         </nav>
     </header>
@@ -36,8 +39,39 @@
             <p>Sample products for the MVP. Each item has a name, price, and key scent notes.</p>
         </section>
 
+        <div class="search-container">
+            <div class="search-box">
+                <div class="search-glow"></div>
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.5"/>
+                    <path d="M20 20L16.5 16.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <input type="text" id="searchInput" placeholder="Discover your signature scent...">
+                <button class="search-clear" type="button" aria-label="Clear search">
+                    <svg viewBox="0 0 24 24" fill="none">
+                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                </button>
+                <div class="search-shimmer"></div>
+            </div>
+            <div class="search-suggestions">
+                <span class="suggestion-tag">Oud</span>
+                <span class="suggestion-tag">Citrus</span>
+                <span class="suggestion-tag">Floral</span>
+                <span class="suggestion-tag">Velvet</span>
+            </div>
+        </div>
+
         <section id="productsContainer" class="cards-grid">
             <!-- Products will be injected here by main.js -->
+        </section>
+
+        <section class="solaris-duo-section">
+            <h3>The Solaris Duo</h3>
+            <p>Masculine and feminine fragrances designed to complement each other.</p>
+            <section id="solarisContainer" class="cards-grid">
+                <!-- Solaris fragrances will be injected here by main.js -->
+            </section>
         </section>
     </main>
 
