@@ -327,13 +327,36 @@ function customAlert(message) {
     alertBox.classList.remove('scroll-reveal', 'revealed');
     overlay.classList.remove('scroll-reveal', 'revealed');
 
-    const closeAlert = () => {
+    const closeAlert = (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
         overlay.remove();
         alertBox.remove();
     };
 
-    document.getElementById('customAlertBtn').addEventListener('click', closeAlert);
-    overlay.addEventListener('click', closeAlert);
+    // Get the button and add event listener with stopPropagation
+    const okButton = document.getElementById('customAlertBtn');
+    if (okButton) {
+        okButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeAlert(e);
+        });
+    }
+    
+    // Also allow closing by clicking overlay, but prevent closing when clicking the alert box itself
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            closeAlert(e);
+        }
+    });
+    
+    // Prevent clicks on the alert box from closing it
+    alertBox.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
 }
 
 function customConfirm(message, onConfirm) {
@@ -371,6 +394,8 @@ function customConfirm(message, onConfirm) {
 }
 
 const BASKET_STORAGE_KEY = "luminousScentsBasket";
+const USER_SESSION_KEY = "luminousScentsUserEmail";
+const USER_SESSION_DATE_KEY = "luminousScentsUserSessionDate";
 
 // Basket helpers
 
@@ -443,6 +468,11 @@ function renderProductsPage() {
         card.className = "card";
         card.setAttribute("data-category", product.category);
 
+        const loggedInUser = getLoggedInUser();
+        const inWishlist = loggedInUser ? isInWishlist(product.id, loggedInUser) : false;
+        const wishlistButtonText = inWishlist ? "In Wishlist" : "Add to Wishlist";
+        const wishlistButtonClass = inWishlist ? "btn-wishlist-active" : "btn-wishlist";
+
         card.innerHTML = `
             <div class="product-image-container ${product.id === 1 ? 'aurora-oud-image' : ''}">
                 <img src="images/${product.image}" alt="${product.name}" class="product-image">
@@ -452,9 +482,14 @@ function renderProductsPage() {
             <p><strong>Notes:</strong> ${product.notes}</p>
             <p class="price">£${product.price.toFixed(2)}</p>
             <p>${product.description}</p>
-            <button class="btn-primary" data-product-id="${product.id}">
-                Add to basket
-            </button>
+            <div class="product-actions">
+                <button class="btn-primary" data-product-id="${product.id}" data-action="basket">
+                    Add to basket
+                </button>
+                <button class="${wishlistButtonClass}" data-product-id="${product.id}" data-action="wishlist">
+                    ${wishlistButtonText}
+                </button>
+            </div>
         `;
 
         return card;
@@ -478,16 +513,53 @@ function renderProductsPage() {
     renderToContainer(wellnessContainer, wellnessProducts);
     renderToContainer(giftContainer, giftProducts);
 
-    // Add click handlers to all product sections
-    document.querySelectorAll(".product-scroll-container, .cards-grid").forEach(container => {
-        container.addEventListener("click", event => {
-            const button = event.target.closest("button[data-product-id]");
-            if (button) {
+    // Add click handlers using event delegation
+    // Only attach listeners to product containers, not the entire document
+    if (!window.productClickHandlersAttached) {
+        const productContainers = document.querySelectorAll(".product-scroll-container, .cards-grid");
+        
+        productContainers.forEach(container => {
+            container.addEventListener('click', function(event) {
+                const button = event.target.closest("button[data-product-id]");
+                if (!button) return;
+                
+                // Stop propagation to prevent interference with other handlers
+                event.stopPropagation();
+                
                 const id = Number(button.getAttribute("data-product-id"));
-                addToBasket(id);
-            }
+                const action = button.getAttribute("data-action");
+                const loggedInUser = getLoggedInUser();
+                
+                if (action === "basket") {
+                    addToBasket(id);
+                } else if (action === "wishlist") {
+                    if (loggedInUser) {
+                        const wasInWishlist = isInWishlist(id, loggedInUser);
+                        
+                        if (wasInWishlist) {
+                            removeFromWishlist(id, loggedInUser);
+                            customAlert("Removed from wishlist");
+                            // Update button state
+                            button.textContent = "Add to Wishlist";
+                            button.className = "btn-wishlist";
+                        } else {
+                            const added = addToWishlist(id, loggedInUser);
+                            if (added) {
+                                customAlert("Added to wishlist");
+                                // Update button state
+                                button.textContent = "In Wishlist";
+                                button.className = "btn-wishlist-active";
+                            }
+                        }
+                    } else {
+                        customAlert("Please log in to add items to your wishlist.");
+                    }
+                }
+            });
         });
-    });
+        
+        window.productClickHandlersAttached = true;
+    }
 
     // Initialize scroll functionality for scrollable sections
     initScrollableSections();
@@ -585,7 +657,28 @@ function filterProducts() {
         const matches = name.includes(searchTerm) || notes.includes(searchTerm) || description.includes(searchTerm);
 
         if (matches) {
-            card.style.display = "block";
+            // Check if card was previously hidden
+            const wasHidden = card.style.display === "none";
+            // Remove inline display style to use CSS default (flex)
+            card.style.display = "";
+            // If card was previously hidden, reset revealed state to allow animation
+            if (wasHidden && card.classList.contains('scroll-reveal')) {
+                card.classList.remove('revealed');
+                // Use requestAnimationFrame to ensure DOM is updated before checking intersection
+                requestAnimationFrame(() => {
+                    // Check if card is already in viewport and trigger reveal manually
+                    const rect = card.getBoundingClientRect();
+                    const isInViewport = rect.top < window.innerHeight && rect.bottom > 0;
+                    if (isInViewport) {
+                        // Small delay to allow animation to trigger properly
+                        setTimeout(() => {
+                            if (card.classList.contains('scroll-reveal') && !card.classList.contains('revealed')) {
+                                card.classList.add('revealed');
+                            }
+                        }, 100);
+                    }
+                });
+            }
             sectionVisibility[category] = (sectionVisibility[category] || 0) + 1;
         } else {
             card.style.display = "none";
@@ -984,7 +1077,288 @@ function setupAuthForm() {
         passwordInput.classList.remove('input-success');
         passwordRequirements.classList.remove('show');
 
-        localStorage.setItem("luminousScentsUserEmail", email);
+        // Save user session
+        localStorage.setItem(USER_SESSION_KEY, email);
+        localStorage.setItem(USER_SESSION_DATE_KEY, new Date().toISOString());
+        
+        // Switch to profile view
+        showProfileView(email);
+    });
+}
+
+// Check if user is logged in
+function isUserLoggedIn() {
+    return !!localStorage.getItem(USER_SESSION_KEY);
+}
+
+function getLoggedInUser() {
+    return localStorage.getItem(USER_SESSION_KEY);
+}
+
+function logout() {
+    localStorage.removeItem(USER_SESSION_KEY);
+    localStorage.removeItem(USER_SESSION_DATE_KEY);
+    showLoginView();
+    customAlert("You have been logged out successfully.");
+}
+
+function showLoginView() {
+    const loginView = document.getElementById("loginView");
+    const profileView = document.getElementById("profileView");
+    if (loginView && profileView) {
+        loginView.style.display = "block";
+        profileView.style.display = "none";
+    }
+}
+
+function showProfileView(userEmail) {
+    const loginView = document.getElementById("loginView");
+    const profileView = document.getElementById("profileView");
+    if (loginView && profileView) {
+        loginView.style.display = "none";
+        profileView.style.display = "block";
+        renderProfilePage(userEmail);
+    }
+}
+
+function renderProfilePage(userEmail) {
+    // Update profile info
+    const profileEmail = document.getElementById("profileEmail");
+    const profileMemberSince = document.getElementById("profileMemberSince");
+    const ordersContainer = document.getElementById("ordersContainer");
+    
+    if (profileEmail) {
+        profileEmail.textContent = userEmail;
+    }
+    
+    if (profileMemberSince) {
+        const sessionDate = localStorage.getItem(USER_SESSION_DATE_KEY);
+        if (sessionDate) {
+            const date = new Date(sessionDate);
+            profileMemberSince.textContent = date.toLocaleDateString('en-GB', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+        } else {
+            profileMemberSince.textContent = "Recently";
+        }
+    }
+    
+    // Render orders
+    if (ordersContainer) {
+        renderOrders(userEmail, ordersContainer);
+    }
+    
+    // Render messages
+    const messagesContainer = document.getElementById("messagesContainer");
+    if (messagesContainer) {
+        renderMessages(userEmail, messagesContainer);
+    }
+    
+    // Render wishlist
+    const wishlistContainer = document.getElementById("wishlistContainer");
+    if (wishlistContainer) {
+        renderWishlist(userEmail, wishlistContainer);
+    }
+    
+    // Setup logout button (remove old listener first to prevent duplicates)
+    const logoutBtn = document.getElementById("logoutBtn");
+    if (logoutBtn) {
+        const newLogoutBtn = logoutBtn.cloneNode(true);
+        logoutBtn.parentNode.replaceChild(newLogoutBtn, logoutBtn);
+        newLogoutBtn.addEventListener("click", logout);
+    }
+}
+
+function renderOrders(userEmail, container) {
+    if (!container) return;
+    
+    const orders = loadUserOrders(userEmail);
+    container.innerHTML = "";
+    
+    if (orders.length === 0) {
+        container.innerHTML = `
+            <div class="empty-orders">
+                <p>You haven't placed any orders yet.</p>
+                <a href="products.html" class="btn-primary">Browse Fragrances</a>
+            </div>
+        `;
+        return;
+    }
+    
+    orders.forEach(order => {
+        const orderCard = document.createElement("div");
+        orderCard.className = "order-card";
+        
+        const orderDate = new Date(order.date);
+        const formattedDate = orderDate.toLocaleDateString('en-GB', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        const statusClass = order.status === 'delivered' ? 'status-delivered' : 
+                           order.status === 'shipped' ? 'status-shipped' : 'status-processing';
+        
+        let itemsHtml = '';
+        order.items.forEach(item => {
+            itemsHtml += `
+                <div class="order-item-row">
+                    <span class="order-item-name">${item.name}</span>
+                    <span class="order-item-qty">Qty: ${item.quantity}</span>
+                    <span class="order-item-price">£${(item.price * item.quantity).toFixed(2)}</span>
+                </div>
+            `;
+        });
+        
+        orderCard.innerHTML = `
+            <div class="order-header">
+                <div class="order-id-date">
+                    <span class="order-id">${order.id}</span>
+                    <span class="order-date">${formattedDate}</span>
+                </div>
+                <span class="order-status ${statusClass}">${order.status.charAt(0).toUpperCase() + order.status.slice(1)}</span>
+            </div>
+            <div class="order-items">
+                ${itemsHtml}
+            </div>
+            <div class="order-footer">
+                <span class="order-total-label">Total:</span>
+                <span class="order-total-amount">£${order.total.toFixed(2)}</span>
+            </div>
+        `;
+        
+        container.appendChild(orderCard);
+        applyScrollReveal(orderCard);
+    });
+}
+
+function renderMessages(userEmail, container) {
+    if (!container) return;
+    
+    const messages = loadUserMessages(userEmail);
+    container.innerHTML = "";
+    
+    if (messages.length === 0) {
+        container.innerHTML = `
+            <div class="empty-orders">
+                <p>You haven't sent any messages yet.</p>
+                <a href="contact.html" class="btn-primary">Contact Us</a>
+            </div>
+        `;
+        return;
+    }
+    
+    messages.forEach(msg => {
+        const messageCard = document.createElement("div");
+        messageCard.className = "order-card";
+        
+        const messageDate = new Date(msg.date);
+        const formattedDate = messageDate.toLocaleDateString('en-GB', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        messageCard.innerHTML = `
+            <div class="order-header">
+                <div class="order-id-date">
+                    <span class="order-id">${msg.id}</span>
+                    <span class="order-date">${formattedDate}</span>
+                </div>
+            </div>
+            <div class="message-content">
+                <div class="message-field">
+                    <span class="message-label">Name:</span>
+                    <span class="message-value">${escapeHtml(msg.name)}</span>
+                </div>
+                <div class="message-field">
+                    <span class="message-label">Email:</span>
+                    <span class="message-value">${escapeHtml(msg.email)}</span>
+                </div>
+                <div class="message-field message-text-field">
+                    <span class="message-label">Message:</span>
+                    <p class="message-text">${escapeHtml(msg.message)}</p>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(messageCard);
+        applyScrollReveal(messageCard);
+    });
+}
+
+function renderWishlist(userEmail, container) {
+    if (!container) return;
+    
+    const wishlist = loadWishlist(userEmail);
+    container.innerHTML = "";
+    
+    if (wishlist.length === 0) {
+        container.innerHTML = `
+            <div class="empty-orders">
+                <p>Your wishlist is empty.</p>
+                <a href="products.html" class="btn-primary">Browse Fragrances</a>
+            </div>
+        `;
+        return;
+    }
+    
+    wishlist.forEach(productId => {
+        const product = products.find(p => p.id === productId);
+        if (!product) return;
+        
+        const wishlistCard = document.createElement("div");
+        wishlistCard.className = "wishlist-card";
+        
+        wishlistCard.innerHTML = `
+            <div class="wishlist-item-image">
+                <img src="images/${product.image}" alt="${product.name}" class="wishlist-image">
+            </div>
+            <div class="wishlist-item-details">
+                <h4 class="wishlist-item-name">${product.name}</h4>
+                <p class="wishlist-item-brand">${product.brand}</p>
+                <p class="wishlist-item-notes"><strong>Notes:</strong> ${product.notes}</p>
+                <p class="wishlist-item-description">${product.description}</p>
+                <div class="wishlist-item-footer">
+                    <span class="wishlist-item-price">£${product.price.toFixed(2)}</span>
+                    <div class="wishlist-item-actions">
+                        <button class="btn-primary wishlist-add-basket" data-product-id="${product.id}">
+                            Add to Basket
+                        </button>
+                        <button class="btn-secondary wishlist-remove" data-product-id="${product.id}">
+                            Remove
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(wishlistCard);
+        applyScrollReveal(wishlistCard);
+    });
+    
+    // Add event listeners for wishlist actions
+    container.querySelectorAll('.wishlist-add-basket').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const productId = Number(e.target.getAttribute('data-product-id'));
+            addToBasket(productId);
+            customAlert("Added to basket");
+        });
+    });
+    
+    container.querySelectorAll('.wishlist-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const productId = Number(e.target.getAttribute('data-product-id'));
+            removeFromWishlist(productId, userEmail);
+            renderWishlist(userEmail, container);
+            customAlert("Removed from wishlist");
+        });
     });
 }
 
@@ -1160,6 +1534,13 @@ function setupContactForm() {
 
         if (hasErrors) {
             return;
+        }
+
+        // Save message if user is logged in
+        const loggedInUser = getLoggedInUser();
+        if (loggedInUser) {
+            const messageObj = createMessage(name, email, message);
+            saveMessage(messageObj, loggedInUser);
         }
 
         // Success - show confirmation and clear form
@@ -1761,6 +2142,19 @@ function setupCheckoutForm() {
             return;
         }
 
+        // Calculate total
+        let total = 0;
+        basket.forEach(item => {
+            const product = products.find(p => p.id === item.productId);
+            if (!product) return;
+            const lineTotal = product.price * item.quantity;
+            total += lineTotal;
+        });
+
+        // Create and save order
+        const order = createOrder(basket, total, email);
+        saveOrder(order, email);
+        
         // Success - clear basket and show confirmation
         localStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify([]));
         
@@ -1779,6 +2173,145 @@ function setupCheckoutForm() {
         // Refresh order summary
         renderCheckoutSummary();
     });
+}
+
+// Order management functions
+function createOrder(basket, total, userEmail) {
+    const orderId = 'ORD-' + Date.now().toString(36).toUpperCase();
+    const statuses = ['processing', 'shipped', 'delivered'];
+    const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
+    
+    const items = basket.map(item => {
+        const product = products.find(p => p.id === item.productId);
+        return {
+            id: product ? product.id : 0,
+            name: product ? product.name : 'Unknown Product',
+            price: product ? product.price : 0,
+            quantity: item.quantity
+        };
+    });
+    
+    return {
+        id: orderId,
+        date: new Date().toISOString(),
+        items: items,
+        total: total,
+        status: randomStatus
+    };
+}
+
+function saveOrder(order, userEmail) {
+    if (!userEmail) return;
+    const userOrdersKey = `luminousScentsOrders_${userEmail}`;
+    const orders = loadUserOrders(userEmail);
+    orders.unshift(order); // Add new order at the beginning
+    localStorage.setItem(userOrdersKey, JSON.stringify(orders));
+}
+
+function loadUserOrders(userEmail) {
+    if (!userEmail) return [];
+    const userOrdersKey = `luminousScentsOrders_${userEmail}`;
+    const stored = localStorage.getItem(userOrdersKey);
+    if (!stored) {
+        return [];
+    }
+    try {
+        return JSON.parse(stored);
+    } catch (e) {
+        console.error("Could not parse stored orders", e);
+        return [];
+    }
+}
+
+// Message management functions
+function createMessage(name, email, message) {
+    const messageId = 'MSG-' + Date.now().toString(36).toUpperCase();
+    
+    return {
+        id: messageId,
+        date: new Date().toISOString(),
+        name: name,
+        email: email,
+        message: message
+    };
+}
+
+function saveMessage(message, userEmail) {
+    if (!userEmail) return;
+    const userMessagesKey = `luminousScentsMessages_${userEmail}`;
+    const messages = loadUserMessages(userEmail);
+    messages.unshift(message); // Add new message at the beginning
+    localStorage.setItem(userMessagesKey, JSON.stringify(messages));
+}
+
+function loadUserMessages(userEmail) {
+    if (!userEmail) return [];
+    const userMessagesKey = `luminousScentsMessages_${userEmail}`;
+    const stored = localStorage.getItem(userMessagesKey);
+    if (!stored) {
+        return [];
+    }
+    try {
+        return JSON.parse(stored);
+    } catch (e) {
+        console.error("Could not parse stored messages", e);
+        return [];
+    }
+}
+
+// Wishlist management functions
+function loadWishlist(userEmail) {
+    if (!userEmail) return [];
+    const wishlistKey = `luminousScentsWishlist_${userEmail}`;
+    const stored = localStorage.getItem(wishlistKey);
+    if (!stored) {
+        return [];
+    }
+    try {
+        return JSON.parse(stored);
+    } catch (e) {
+        console.error("Could not parse stored wishlist", e);
+        return [];
+    }
+}
+
+function saveWishlist(wishlist, userEmail) {
+    if (!userEmail) return;
+    const wishlistKey = `luminousScentsWishlist_${userEmail}`;
+    localStorage.setItem(wishlistKey, JSON.stringify(wishlist));
+}
+
+function addToWishlist(productId, userEmail) {
+    if (!userEmail) {
+        customAlert("Please log in to add items to your wishlist.");
+        return;
+    }
+    const wishlist = loadWishlist(userEmail);
+    if (!wishlist.includes(productId)) {
+        wishlist.push(productId);
+        saveWishlist(wishlist, userEmail);
+        // Alert is shown by the calling function
+        return true;
+    } else {
+        customAlert("This item is already in your wishlist.");
+        return false;
+    }
+}
+
+function removeFromWishlist(productId, userEmail) {
+    if (!userEmail) return;
+    const wishlist = loadWishlist(userEmail);
+    const index = wishlist.indexOf(productId);
+    if (index > -1) {
+        wishlist.splice(index, 1);
+        saveWishlist(wishlist, userEmail);
+    }
+}
+
+function isInWishlist(productId, userEmail) {
+    if (!userEmail) return false;
+    const wishlist = loadWishlist(userEmail);
+    return wishlist.includes(productId);
 }
 
 // Starfield canvas effect
@@ -1812,6 +2345,9 @@ function initStarfield() {
     function drawStars() {
         ctx.clearRect(0, 0, w, h);
 
+        // Check if we're in light mode
+        const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+
         for (let s of stars) {
             const parallaxX = mouseX * (s.size / 2);
             const parallaxY = mouseY * (s.size / 2);
@@ -1824,9 +2360,16 @@ function initStarfield() {
                 s.x + parallaxX, s.y + parallaxY, s.size * 4
             );
 
-            gradient.addColorStop(0, `rgba(255, 220, 130, ${s.alpha})`);
-            gradient.addColorStop(0.4, `rgba(245, 210, 120, ${s.alpha * 0.6})`);
-            gradient.addColorStop(1, `rgba(240, 194, 75, 0)`);
+            // Use darker gold/brown colors in light mode for better visibility
+            if (isLightMode) {
+                gradient.addColorStop(0, `rgba(180, 140, 80, ${s.alpha * 0.9})`);
+                gradient.addColorStop(0.4, `rgba(160, 120, 70, ${s.alpha * 0.7})`);
+                gradient.addColorStop(1, `rgba(140, 100, 60, 0)`);
+            } else {
+                gradient.addColorStop(0, `rgba(255, 220, 130, ${s.alpha})`);
+                gradient.addColorStop(0.4, `rgba(245, 210, 120, ${s.alpha * 0.6})`);
+                gradient.addColorStop(1, `rgba(240, 194, 75, 0)`);
+            }
 
             ctx.fillStyle = gradient;
             ctx.fill();
@@ -1837,9 +2380,14 @@ function initStarfield() {
     }
 
     function twinkle() {
+        const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+        // In light mode, use higher alpha range for better visibility
+        const minAlpha = isLightMode ? 0.4 : 0.15;
+        const maxAlpha = isLightMode ? 0.95 : 0.7;
+        
         for (let s of stars) {
             s.alpha += (Math.random() - 0.5) * 0.02;
-            s.alpha = Math.min(Math.max(s.alpha, 0.15), 0.7);
+            s.alpha = Math.min(Math.max(s.alpha, minAlpha), maxAlpha);
         }
     }
 
@@ -1882,10 +2430,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
     initStarfield();
     initMouseTrail();
+    initializeChatbot();
 
     // rest of the code...
     if (page === "home" || page === "account") {
-        setupAuthForm();
+        if (page === "account") {
+            // Check if user is logged in
+            if (isUserLoggedIn()) {
+                const userEmail = getLoggedInUser();
+                showProfileView(userEmail);
+            } else {
+                setupAuthForm();
+            }
+        } else {
+            setupAuthForm();
+        }
     } else if (page === "products") {
         renderProductsPage();
         initEnhancedSearch();
@@ -1928,20 +2487,25 @@ window.addEventListener("load", () => {
 
 // Scroll reveal animations with hysteresis to prevent jitter at boundaries
 // Reveal observer: triggers when element enters viewport
+// Using requestAnimationFrame to batch DOM updates for better performance
 const revealObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-        if (entry.isIntersecting && !entry.target.classList.contains('revealed')) {
-            entry.target.classList.add('revealed');
-        }
+    requestAnimationFrame(() => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting && !entry.target.classList.contains('revealed')) {
+                entry.target.classList.add('revealed');
+            }
+        });
     });
 }, { threshold: 0.05, rootMargin: '0px' });
 
 // Hide observer: triggers when element is fully outside viewport (with small buffer)
 const hideObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-        if (!entry.isIntersecting && entry.target.classList.contains('revealed')) {
-            entry.target.classList.remove('revealed');
-        }
+    requestAnimationFrame(() => {
+        entries.forEach(entry => {
+            if (!entry.isIntersecting && entry.target.classList.contains('revealed')) {
+                entry.target.classList.remove('revealed');
+            }
+        });
     });
 }, { threshold: 0, rootMargin: '20px 0px 20px 0px' });
 
@@ -2044,6 +2608,306 @@ function initMouseTrail() {
     animate();
 }
 
+// Chatbot Functionality (using FK's simpler approach)
+let chatbotOpen = false;
+let isTyping = false;
+
+// AI Chat responses (similar to FK implementation)
+const chatbotResponses = {
+    greetings: [
+        "Hello! I'm here to help you find your perfect fragrance. What kind of scent are you in the mood for today?",
+        "Welcome to Luminous Scents! I can help guide you through our collection. Are you looking for something fresh and citrusy or warm and mysterious?",
+        "Hi there! Ready to discover your signature scent? Tell me about your style and I'll recommend the perfect fragrance."
+    ],
+    citrus: [
+        "Citrus fragrances are perfect for a fresh, energizing start to your day! Our Citrus Dawn features bergamot, lemon, and neroli. It's bright, uplifting, and perfect for daytime wear. Would you like to add it to your basket?",
+        "Citrus scents are wonderfully refreshing! Citrus Dawn is one of our most popular daytime fragrances with its vibrant blend of bergamot, lemon, and neroli. It's perfect for spring and summer. Are you interested in trying it?",
+        "Citrus fragrances are like liquid sunshine! Citrus Dawn combines bergamot, lemon, and neroli for a bright, zesty experience that lasts all day. It's excellent for work or casual outings. Would you like to explore it further?"
+    ],
+    evening: [
+        "For evening wear, I'd recommend our Aurora Oud. It features rich oud, amber, and vanilla - perfect for creating an aura of mystery and elegance. It's our most sophisticated scent for special occasions.",
+        "Evening fragrances should be captivating! Aurora Oud offers warm, deep notes of oud, amber, and vanilla that unfold beautifully as the evening progresses. It's designed for those who want to make a lasting impression.",
+        "For nighttime elegance, Aurora Oud is unmatched. With its complex oud base, warm amber, and creamy vanilla, it's a fragrance that tells a story. Perfect for dinner dates, events, or when you want to feel extraordinary."
+    ],
+    popular: [
+        "Our most popular fragrances are Aurora Oud for evening wear, Citrus Dawn for everyday freshness, and Velvet Iris for soft, romantic occasions. Each has its own distinct personality!",
+        "The favorites among our customers are definitely Aurora Oud (sophisticated evenings), Citrus Dawn (bright days), and Velvet Iris (gentle elegance). They're all unique in their own way.",
+        "Our top three are Aurora Oud for luxury evenings, Citrus Dawn for energizing days, and Velvet Iris for intimate moments. Each is crafted to enhance different aspects of your personality."
+    ],
+    general: [
+        "I'd be happy to help you choose a fragrance! Are you looking for something fresh, warm, floral, or perhaps woody? Each of our scents has its own character and is perfect for different occasions.",
+        "Finding the right fragrance is like finding the perfect piece of art - it should speak to your soul. Our collection includes Aurora Oud for mysterious evenings, Citrus Dawn for bright days, and Velvet Iris for romantic moments.",
+        "Every fragrance tells a story, and I want to help you find yours! Whether you prefer the bold complexity of Aurora Oud, the bright freshness of Citrus Dawn, or the soft elegance of Velvet Iris, there's a perfect match for you.",
+        "I can help you discover a fragrance that matches your personality and lifestyle. What mood are you in today? Fresh and energetic, warm and mysterious, or soft and romantic?"
+    ],
+    product_info: {
+        "aurora oud": "Aurora Oud is our signature evening fragrance featuring rich oud, amber, and vanilla. It costs £89.99 and is perfect for sophisticated occasions. The scent unfolds in layers, revealing its complexity throughout the evening.",
+        "citrus dawn": "Citrus Dawn is our fresh daytime fragrance with bergamot, lemon, and neroli. It's priced at £59.99 and perfect for energizing your day. The bright, citrusy notes are uplifting and long-lasting.",
+        "velvet iris": "Velvet Iris offers soft floral elegance with iris, violet, and sandalwood. At £74.50, it's perfect for romantic occasions or when you want to feel gentle and sophisticated. The creamy sandalwood base provides wonderful longevity."
+    }
+};
+
+function initializeChatbot() {
+    const chatBubble = document.getElementById('chatBubble');
+    const chatWindow = document.getElementById('chatWindow');
+    const minimizeBtn = document.getElementById('minimizeChat');
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendMessage');
+
+    if (!chatBubble || !chatWindow || !chatInput || !sendBtn) {
+        return;
+    }
+
+    // Toggle chatbot
+    chatBubble.addEventListener('click', () => {
+        chatbotOpen = !chatbotOpen;
+        chatWindow.classList.toggle('active', chatbotOpen);
+        
+        if (chatbotOpen) {
+            chatInput.focus();
+            setTimeout(() => scrollToBottom(), 100);
+            // Hide indicator when chat opens
+            const indicator = chatBubble.querySelector('.chat-indicator');
+            if (indicator) indicator.style.display = 'none';
+        }
+    });
+
+    // Minimize chatbot
+    if (minimizeBtn) {
+        minimizeBtn.addEventListener('click', () => {
+            chatbotOpen = false;
+            chatWindow.classList.remove('active');
+        });
+    }
+
+    // Send message
+    sendBtn.addEventListener('click', () => sendChatbotMessage());
+    chatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            sendChatbotMessage();
+        }
+    });
+
+    // Quick replies
+    document.querySelectorAll('.quick-reply').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const message = e.target.getAttribute('data-message');
+            sendChatbotMessage(message);
+        });
+    });
+
+    // Add to basket buttons
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('add-to-basket-btn')) {
+            const productId = parseInt(e.target.getAttribute('data-product-id'));
+            addToBasket(productId);
+            addBotMessage("Great choice! I've added that fragrance to your basket. You can continue exploring or close the chat when you're ready!");
+        }
+    });
+}
+
+function sendChatbotMessage(userInput = null) {
+    const chatInput = document.getElementById('chatInput');
+    const input = userInput || chatInput.value.trim();
+
+    if (!input || isTyping) return;
+
+    // Add user message
+    addUserMessage(input);
+    chatInput.value = '';
+
+    // Generate AI response
+    simulateAIResponse(input);
+}
+
+function addUserMessage(message) {
+    const messagesContainer = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message user-message';
+    messageDiv.innerHTML = `
+        <div class="message-avatar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+            </svg>
+        </div>
+        <div class="message-content">
+            <div class="message-text">${escapeHtml(message)}</div>
+            <div class="message-time">${getCurrentTime()}</div>
+        </div>
+    `;
+
+    messagesContainer.appendChild(messageDiv);
+    scrollToBottom();
+}
+
+function addBotMessage(content, delay = 1000) {
+    setTimeout(() => {
+        removeTypingIndicator();
+        
+        const messagesContainer = document.getElementById('chatMessages');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message ai-message';
+        messageDiv.innerHTML = `
+            <div class="message-avatar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+                </svg>
+            </div>
+            <div class="message-content">
+                <div class="message-text">${content}</div>
+                <div class="message-time">${getCurrentTime()}</div>
+            </div>
+        `;
+
+        messagesContainer.appendChild(messageDiv);
+        scrollToBottom();
+        isTyping = false;
+    }, delay);
+}
+
+function showTypingIndicator() {
+    const messagesContainer = document.getElementById('chatMessages');
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'message ai-message';
+    typingDiv.id = 'typingIndicator';
+    typingDiv.innerHTML = `
+        <div class="message-avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+            </svg>
+        </div>
+        <div class="message-content">
+            <div class="typing-indicator">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+        </div>
+    `;
+
+    messagesContainer.appendChild(typingDiv);
+    scrollToBottom();
+}
+
+function removeTypingIndicator() {
+    const typingEl = document.getElementById('typingIndicator');
+    if (typingEl) {
+        typingEl.remove();
+    }
+}
+
+function getCurrentTime() {
+    const now = new Date();
+    return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function simulateAIResponse(userMessage) {
+    if (isTyping) return;
+    
+    isTyping = true;
+    showTypingIndicator();
+
+    const lowerMessage = userMessage.toLowerCase();
+    let response = '';
+
+    // Handle special actions first
+    if (lowerMessage.includes('surprise')) {
+        giveRandomRecommendation();
+        return;
+    }
+
+    if (lowerMessage.includes('clear') || lowerMessage.includes('reset')) {
+        resetChatbot();
+        return;
+    }
+
+    // Check for product-specific queries
+    if (lowerMessage.includes('aurora') && lowerMessage.includes('oud')) {
+        response = chatbotResponses.product_info["aurora oud"];
+    } else if (lowerMessage.includes('citrus') && (lowerMessage.includes('dawn') || lowerMessage.includes('citrus'))) {
+        response = chatbotResponses.product_info["citrus dawn"];
+    } else if (lowerMessage.includes('velvet') && lowerMessage.includes('iris')) {
+        response = chatbotResponses.product_info["velvet iris"];
+    } else if (lowerMessage.includes('citrus') || lowerMessage.includes('fresh') || lowerMessage.includes('bright') || lowerMessage.includes('daytime')) {
+        response = getRandomResponse(chatbotResponses.citrus);
+    } else if (lowerMessage.includes('evening') || lowerMessage.includes('night') || lowerMessage.includes('warm') || lowerMessage.includes('oud')) {
+        response = getRandomResponse(chatbotResponses.evening);
+    } else if (lowerMessage.includes('popular') || lowerMessage.includes('recommend') || lowerMessage.includes('best')) {
+        response = getRandomResponse(chatbotResponses.popular);
+    } else if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
+        response = getRandomResponse(chatbotResponses.greetings);
+    } else {
+        response = getRandomResponse(chatbotResponses.general);
+    }
+
+    addBotMessage(response, Math.random() * 1000 + 500);
+}
+
+function getRandomResponse(responses) {
+    return responses[Math.floor(Math.random() * responses.length)];
+}
+
+function giveRandomRecommendation() {
+    const randomProduct = products[Math.floor(Math.random() * products.length)];
+    const response = `
+        <p>Since you want to be surprised, let me suggest something special!</p>
+        <div class="product-recommendation">
+            <h5>${randomProduct.name}</h5>
+            <p><strong>Notes:</strong> ${randomProduct.notes}</p>
+            <p>${randomProduct.description}</p>
+            <p><em>This is one of our most beloved fragrances - perfect for those who appreciate unique, sophisticated scents.</em></p>
+            <button class="add-to-basket-btn" data-product-id="${randomProduct.id}">
+                Add to Basket (£${randomProduct.price.toFixed(2)})
+            </button>
+        </div>
+        <p>What did you think of that suggestion?</p>
+    `;
+
+    addBotMessage(response, Math.random() * 1000 + 500);
+}
+
+function handleQuickAction(action) {
+    if (action === 'surprise') {
+        giveRandomRecommendation();
+    } else if (action === 'reset') {
+        resetChatbot();
+    }
+}
+
+function resetChatbot() {
+    isTyping = false;
+    removeTypingIndicator();
+    
+    const messagesContainer = document.getElementById('chatMessages');
+    messagesContainer.innerHTML = `
+        <div class="message ai-message">
+            <div class="message-avatar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+                </svg>
+            </div>
+            <div class="message-content">
+                <div class="message-text">Welcome to Luminous Scents! 🌟 I'm Lumi, your AI fragrance expert. I can help you discover the perfect scent based on your preferences. What type of fragrance are you looking for today?</div>
+                <div class="message-time">Just now</div>
+            </div>
+        </div>
+    `;
+    scrollToBottom();
+}
+
+function scrollToBottom() {
+    const messagesContainer = document.getElementById('chatMessages');
+    if (messagesContainer) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 const bulletObserver = new IntersectionObserver(entries => {
     entries.forEach(entry => {
         if (entry.isIntersecting) {
@@ -2059,5 +2923,60 @@ const bulletObserver = new IntersectionObserver(entries => {
 
 document.querySelectorAll(".values-section").forEach(section => {
     bulletObserver.observe(section);
+});
+
+// ===========================
+// THEME TOGGLE FUNCTIONALITY
+// ===========================
+
+function initThemeToggle() {
+    const themeToggle = document.getElementById('themeToggle');
+    if (!themeToggle) return;
+
+    const html = document.documentElement;
+    const THEME_STORAGE_KEY = 'luminousScentsTheme';
+    
+    // Get saved theme or default to dark
+    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || 'dark';
+    html.setAttribute('data-theme', savedTheme);
+    updateThemeIcon(savedTheme);
+
+    // Toggle theme on button click
+    themeToggle.addEventListener('click', () => {
+        const currentTheme = html.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        
+        html.setAttribute('data-theme', newTheme);
+        localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+        updateThemeIcon(newTheme);
+    });
+}
+
+function updateThemeIcon(theme) {
+    const themeToggle = document.getElementById('themeToggle');
+    if (!themeToggle) return;
+
+    const svg = themeToggle.querySelector('svg');
+    if (!svg) return;
+
+    if (theme === 'light') {
+        // Moon icon for light mode (to switch to dark)
+        svg.innerHTML = `
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2" fill="none"/>
+        `;
+        themeToggle.setAttribute('aria-label', 'Switch to dark mode');
+    } else {
+        // Sun icon for dark mode (to switch to light)
+        svg.innerHTML = `
+            <circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2" fill="none"/>
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="2"/>
+        `;
+        themeToggle.setAttribute('aria-label', 'Switch to light mode');
+    }
+}
+
+// Initialize theme toggle on page load
+document.addEventListener('DOMContentLoaded', () => {
+    initThemeToggle();
 });
 
